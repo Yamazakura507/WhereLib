@@ -38,9 +38,45 @@ public static class WhereEngine
         where TFilterRule : FilterRule<TFilterParameter>
         where TSearchRule : SearchRule<TSearchParameter>
     {
+        ArgumentNullException.ThrowIfNull(searchValueSelector);
+
+        return source.ApplyMany<TItem, TFilterParameter, TSearchParameter, TFilterRule, TSearchRule>
+            (filterRules,filterMatcher,searchRules,(item, rule) => [searchValueSelector(item, rule)], searchOptions);
+    }
+
+    /// <summary>
+    /// Filters items and searches one or more text values for each search rule.
+    /// A search rule matches when at least one selected text value satisfies its query.
+    /// This supports items such as messages that own multiple searchable statuses or labels.
+    /// Logical operator and filter behavior are identical to <see cref="Apply{TItem, TFilterParameter, TSearchParameter, TFilterRule, TSearchRule}"/>.
+    /// </summary>
+    /// <typeparam name="TItem">The source item type.</typeparam>
+    /// <typeparam name="TFilterParameter">Enum identifying filterable properties.</typeparam>
+    /// <typeparam name="TSearchParameter">Enum identifying searchable properties.</typeparam>
+    /// <typeparam name="TFilterRule">Concrete filter rule type used by the consumer.</typeparam>
+    /// <typeparam name="TSearchRule">Concrete search rule type used by the consumer.</typeparam>
+    /// <param name="source">Source items, normally already sorted.</param>
+    /// <param name="filterRules">Optional ordered filter rules.</param>
+    /// <param name="filterMatcher">Returns whether an item matches one filter rule.</param>
+    /// <param name="searchRules">Optional ordered search rules.</param>
+    /// <param name="searchValuesSelector">Returns all text values checked by one search rule.</param>
+    /// <param name="searchOptions">Options controlling all text matching.</param>
+    /// <returns>Matching items in their original source order.</returns>
+    public static IReadOnlyList<TItem> ApplyMany<TItem, TFilterParameter, TSearchParameter, TFilterRule, TSearchRule>(
+        this IEnumerable<TItem> source,
+        IEnumerable<TFilterRule>? filterRules,
+        Func<TItem, TFilterRule, bool> filterMatcher,
+        IEnumerable<TSearchRule>? searchRules,
+        Func<TItem, TSearchRule, IEnumerable<string?>?> searchValuesSelector,
+        SearchOptions? searchOptions = null)
+        where TFilterParameter : struct, Enum
+        where TSearchParameter : struct, Enum
+        where TFilterRule : FilterRule<TFilterParameter>
+        where TSearchRule : SearchRule<TSearchParameter>
+    {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(filterMatcher);
-        ArgumentNullException.ThrowIfNull(searchValueSelector);
+        ArgumentNullException.ThrowIfNull(searchValuesSelector);
 
         TFilterRule[] filters = filterRules?.ToArray() ?? [];
         TSearchRule[] searches = searchRules?.Where(rule => !string.IsNullOrWhiteSpace(rule.SearchText)).ToArray() ?? [];
@@ -54,7 +90,8 @@ public static class WhereEngine
             if (!passesFilters) return false;
 
             return searches.Evaluate<TSearchRule, TSearchParameter>(
-                rule => options.IsMatch(searchValueSelector(item, rule), rule.SearchText!), LogicalOperator.Or);
+                rule => searchValuesSelector(item, rule)?.Any(candidate => options.IsMatch(candidate, rule.SearchText!)) == true,
+                LogicalOperator.Or);
         }).ToList();
     }
 

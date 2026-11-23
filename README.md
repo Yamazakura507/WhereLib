@@ -5,7 +5,7 @@ A UI- and model-independent .NET library for composable filtering and text searc
 ## Rules
 
 - `FilterRule<TParameter>` holds a typed filter parameter, its expected `Value` and an optional `LogicalOperator`.
-- `SearchRule<TParameter>` holds a typed searchable parameter, `SearchText` and an optional `LogicalOperator`.
+- `SearchRule<TParameter>` holds a typed searchable parameter, `SearchText` and an optional `LogicalOperator`. A consumer can use `WhereEngine.ApplyMany(...)` when one search parameter resolves to multiple text values; that rule matches when any candidate value matches the query.
 - `SearchOptions` controls the matching algorithm and its behavior.
 - `WhereEngine.Apply(...)` applies filtering first, then search, without mutating the source sequence.
 
