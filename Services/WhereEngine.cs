@@ -141,31 +141,48 @@ public static class WhereEngine
 
     private static bool MatchesLevenshtein(this string candidate, string query, int maxDistance, bool strict)
     {
-        if (strict) return LevenshteinDistance(candidate, query, maxDistance) <= maxDistance;
+        if (strict) return LevenshteinDistance(query.AsSpan(), candidate.AsSpan(), maxDistance) <= maxDistance;
         if (query.Length == 0) return true;
+        if (candidate.Length == 0) return false;
 
         int minimumLength = Math.Max(1, query.Length - maxDistance);
-        int maximumLength = Math.Min(candidate.Length, query.Length + maxDistance);
 
-        for (int start = 0; start < candidate.Length; start++)
+        if (candidate.Length < minimumLength) return false;
+
+        int[] previous = new int[query.Length + 1];
+        int[] current = new int[query.Length + 1];
+
+        for (int queryIndex = 0; queryIndex <= query.Length; queryIndex++) previous[queryIndex] = queryIndex;
+
+        for (int candidateIndex = 0; candidateIndex < candidate.Length; candidateIndex++)
         {
-            for (int length = minimumLength; length <= maximumLength && start + length <= candidate.Length; length++)
+            current[0] = 0;
+
+            for (int queryIndex = 1; queryIndex <= query.Length; queryIndex++)
             {
-                if (Math.Abs(length - query.Length) > maxDistance) continue;
-
-                string segment = candidate.Substring(start, length);
-
-                if (LevenshteinDistance(segment, query, maxDistance) <= maxDistance) return true;
+                int substitutionCost = candidate[candidateIndex] == query[queryIndex - 1] ? 0 : 1;
+                current[queryIndex] = Math.Min(
+                    Math.Min(current[queryIndex - 1] + 1, previous[queryIndex] + 1),
+                    previous[queryIndex - 1] + substitutionCost);
             }
+
+            if (candidateIndex + 1 >= minimumLength && current[query.Length] <= maxDistance) return true;
+
+            (previous, current) = (current, previous);
         }
 
         return false;
     }
 
-    private static int LevenshteinDistance(string left, string right, int limit)
+    private static int LevenshteinDistance(ReadOnlySpan<char> left, ReadOnlySpan<char> right, int limit)
     {
         if (Math.Abs(left.Length - right.Length) > limit) return limit + 1;
-        if (left.Length > right.Length) (left, right) = (right, left);
+        if (left.Length > right.Length)
+        {
+            ReadOnlySpan<char> temporary = left;
+            left = right;
+            right = temporary;
+        }
 
         int[] previous = new int[left.Length + 1];
         int[] current = new int[left.Length + 1];
@@ -174,20 +191,21 @@ public static class WhereEngine
 
         for (int rightIndex = 1; rightIndex <= right.Length; rightIndex++)
         {
+            int from = Math.Max(1, rightIndex - limit);
+            int to = Math.Min(left.Length, rightIndex + limit);
             current[0] = rightIndex;
-            int rowMinimum = current[0];
 
-            for (int leftIndex = 1; leftIndex <= left.Length; leftIndex++)
+            if (from > 1) current[from - 1] = limit + 1;
+
+            for (int leftIndex = from; leftIndex <= to; leftIndex++)
             {
                 int substitutionCost = left[leftIndex - 1] == right[rightIndex - 1] ? 0 : 1;
                 current[leftIndex] = Math.Min(
                     Math.Min(current[leftIndex - 1] + 1, previous[leftIndex] + 1),
                     previous[leftIndex - 1] + substitutionCost);
-                rowMinimum = Math.Min(rowMinimum, current[leftIndex]);
             }
 
-            if (rowMinimum > limit) return limit + 1;
-
+            if (to < left.Length) current[to + 1] = limit + 1;
             (previous, current) = (current, previous);
         }
 
